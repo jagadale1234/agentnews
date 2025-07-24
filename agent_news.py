@@ -155,8 +155,8 @@ Welcome to this week's AgentNews! Here are the top AI agent stories:
         
         for i, article in enumerate(articles, 1):
             email_body += f"{i}. {article['title']}\n"
-            email_body += f"   🔗 {article['link']}\n"
-            email_body += f"   📝 {article['summary']}\n\n"
+            email_body += f"   Link: {article['link']}\n"
+            email_body += f"   Summary: {article['summary']}\n\n"
         
         # Add unsubscribe instructions
         unsubscribe_text = ""

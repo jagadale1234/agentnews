@@ -147,12 +147,12 @@ MAIN_TEMPLATE = """
 <body>
     <div class="container">
         <div class="header">
-            <h1>🤖 AgentNews</h1>
+            <h1>AgentNews</h1>
             <div class="subtitle">Your AI Agent Newsletter</div>
         </div>
         
         <div class="stats">
-            📊 {{ subscriber_count }} active subscribers receiving weekly AI agent updates
+            {{ subscriber_count }} active subscribers receiving weekly AI agent updates
         </div>
         
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -164,7 +164,7 @@ MAIN_TEMPLATE = """
         {% endwith %}
         
         <div class="form-section">
-            <h3>📧 Subscribe to AgentNews</h3>
+            <h3>Subscribe to AgentNews</h3>
             <p>Get the latest AI agent news and updates delivered to your inbox every week.</p>
             <form method="POST" action="{{ url_for('subscribe') }}">
                 <input type="email" name="email" placeholder="Enter your email address" required>
@@ -175,7 +175,7 @@ MAIN_TEMPLATE = """
         <hr>
         
         <div class="form-section">
-            <h3>🚫 Unsubscribe from AgentNews</h3>
+            <h3>Unsubscribe from AgentNews</h3>
             <p>Sorry to see you go! You can unsubscribe at any time.</p>
             <form method="POST" action="{{ url_for('unsubscribe') }}">
                 <input type="email" name="email" placeholder="Enter your email address" required>
@@ -253,14 +253,14 @@ SUCCESS_TEMPLATE = """
     <div class="container">
         <div class="success">
             {% if action == 'subscribe' %}
-                <h1>✅ Welcome to AgentNews!</h1>
+                <h1>Welcome to AgentNews!</h1>
                 <div class="info">
                     <p><strong>Subscription Confirmed!</strong></p>
                     <p>You'll receive the latest AI agent news in your inbox every Monday.</p>
                     <p>Check your email for our next newsletter!</p>
                 </div>
             {% else %}
-                <h1>👋 Successfully Unsubscribed</h1>
+                <h1>Successfully Unsubscribed</h1>
                 <div class="info">
                     <p><strong>You've been unsubscribed from AgentNews.</strong></p>
                     <p>You won't receive any more newsletters from us.</p>
@@ -327,7 +327,7 @@ UNSUBSCRIBE_TOKEN_TEMPLATE = """
 </head>
 <body>
     <div class="container">
-        <h1>🤖 AgentNews Unsubscribe</h1>
+        <h1>AgentNews Unsubscribe</h1>
         
         <div class="warning">
             <h3>Are you sure you want to unsubscribe?</h3>
@@ -528,9 +528,9 @@ if __name__ == '__main__':
     db = get_database()
     if db:
         count = db.get_subscriber_count()
-        print(f"✅ Database connected - {count} active subscribers")
+        print(f"Database connected - {count} active subscribers")
     else:
-        print("⚠️  Database connection failed - check DATABASE_URL")
+        print("Database connection failed - check DATABASE_URL")
     
     # Run with production settings if DATABASE_URL is set (cloud deployment)
     if os.getenv('DATABASE_URL'):

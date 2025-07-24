@@ -1,37 +1,27 @@
-# Agent## 🚀 Features
-
-- 🔍 **Web Scraping**: Automatically scrapes the latest AI agent news from aiagentsdirectory.com
-- 📧 **Email Automation**: Sends formatted newsletters via Gmail SMTP
-- 📋 **Cloud Database**: PostgreSQL/SQLite support for reliable subscriber management
-- 🚫 **Smart Unsubscribe**: Secure token-based unsubscribe system
-- 🌐 **Web Interface**: Professional web-based subscription management
-- ⚡ **GitHub Actions**: Automated newsletter delivery via cloud cron jobs
-- 📊 **Analytics**: Subscriber tracking and management
-- 🛡️ **Security**: Secure token generation and database management
-- 🔧 **Scalable**: Ready for cloud deployment and high volumetomated AI Newsletter
+# AgentNews - Automated AI Newsletter
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
 
 A simple Python script that scrapes AI agent news and sends automated newsletters to subscribers.
 
-## 🚀 Features
+## Features
 
-- 🔍 **Web Scraping**: Automatically scrapes the latest AI agent news from aiagentsdirectory.com
-- 📧 **Email Automation**: Sends formatted newsletters via Gmail SMTP
-- 📋 **Subscriber Management**: Reads email addresses from a CSV file
-- � **Unsubscribe System**: Automated unsubscribe handling with personalized links
-- 🌐 **Web Interface**: Optional web-based subscription management
-- �📊 **Logging**: Comprehensive logging for monitoring and debugging
-- 🛡️ **Error Handling**: Robust error handling and fallback mechanisms
+- **Web Scraping**: Automatically scrapes the latest AI agent news from aiagentsdirectory.com
+- **Email Automation**: Sends formatted newsletters via Gmail SMTP
+- **Subscriber Management**: Reads email addresses from a CSV file
+- **Unsubscribe System**: Automated unsubscribe handling with personalized links
+- **Web Interface**: Optional web-based subscription management
+- **Logging**: Comprehensive logging for monitoring and debugging
+- **Error Handling**: Robust error handling and fallback mechanisms
 
-## 📋 Requirements
+## Requirements
 
 - Python 3.7+
 - Gmail account with App Password enabled
 - Internet connection for web scraping
 
-## 🔧 Quick Start
+## Quick Start
 
 ### Local Development
 1. **Clone the repository:**

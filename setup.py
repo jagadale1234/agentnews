@@ -33,8 +33,8 @@ GMAIL_APP_PASSWORD={gmail_password}
     with open('.env', 'w') as f:
         f.write(env_content)
     
-    print("\n✅ Credentials saved to .env file")
-    print("⚠️  Keep this file secure and don't commit it to version control!")
+    print("\nCredentials saved to .env file")
+    print("Keep this file secure and don't commit it to version control!")
     
     return gmail_user, gmail_password
 
@@ -47,27 +47,27 @@ def test_setup():
         from agent_news import AgentNewsletterScraper, NewsletterEmailer
         
         # Test scraping
-        print("✅ Testing web scraping...")
+        print("Testing web scraping...")
         scraper = AgentNewsletterScraper()
         articles = scraper.scrape_latest_news(max_articles=2)
         print(f"   Found {len(articles)} articles")
         
         # Test email formatting (without sending)
-        print("✅ Testing email formatting...")
+        print("Testing email formatting...")
         emailer = NewsletterEmailer("test@example.com", "dummy_password")
         formatted_email = emailer.format_newsletter(articles)
         print("   Email formatted successfully")
         
         # Test subscriber reading
-        print("✅ Testing subscriber reading...")
+        print("Testing subscriber reading...")
         subscribers = emailer.read_subscribers()
         print(f"   Found {len(subscribers)} subscribers in CSV")
         
-        print("\n🎉 All tests passed! AgentNews is ready to use.")
+        print("\nAll tests passed! AgentNews is ready to use.")
         print("\nTo send the newsletter, run: python agent_news.py")
         
     except Exception as e:
-        print(f"❌ Error during testing: {e}")
+        print(f"Error during testing: {e}")
         print("Please check your setup and try again.")
 
 def main():
