@@ -17,7 +17,7 @@ import csv
 import sys
 import logging
 from datetime import datetime
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 import requests
 from bs4 import BeautifulSoup
 import yagmail
@@ -118,28 +118,6 @@ class AgentNewsletterScraper:
                         'summary': title  # For MVP, use title as summary
                     })
             
-            # If we still don't have enough articles, create some sample ones
-            if len(articles) < 3:
-                logger.warning("Not enough articles found, adding sample content")
-                sample_articles = [
-                    {
-                        'title': 'Amazon KIRO: Why the New AI-Native IDE Could Redefine How We Build Software',
-                        'link': f'{self.base_url}/blog/amazon-kiro-why-the-new-ai-native-ide-could-redefine-how-we-build-software',
-                        'summary': 'Amazon KIRO: Why the New AI-Native IDE Could Redefine How We Build Software'
-                    },
-                    {
-                        'title': 'The End of Chatbots? Why AI Agents Mark the Start of a New Era',
-                        'link': f'{self.base_url}/blog/the-end-of-chatbots-why-ai-agents-mark-the-start-of-a-new-era',
-                        'summary': 'The End of Chatbots? Why AI Agents Mark the Start of a New Era'
-                    },
-                    {
-                        'title': 'Top 10 AI Agents Shaping the Crypto World | January 2025',
-                        'link': f'{self.base_url}/blog/top-10-ai-agents-shaping-the-crypto-world-january-2025',
-                        'summary': 'Top 10 AI Agents Shaping the Crypto World | January 2025'
-                    }
-                ]
-                articles.extend(sample_articles)
-            
             logger.info(f"Successfully scraped {len(articles)} articles")
             return articles[:max_articles]
             
@@ -155,12 +133,13 @@ class NewsletterEmailer:
         self.gmail_user = gmail_user
         self.gmail_password = gmail_password
     
-    def format_newsletter(self, articles: List[Dict[str, str]]) -> str:
+    def format_newsletter(self, articles: List[Dict[str, str]], subscriber_email: Optional[str] = None) -> str:
         """
         Format articles into a newsletter email body
         
         Args:
             articles: List of article dictionaries
+            subscriber_email: Email address of the subscriber (for unsubscribe link)
             
         Returns:
             Formatted email body as string
@@ -179,13 +158,20 @@ Welcome to this week's AgentNews! Here are the top AI agent stories:
             email_body += f"   🔗 {article['link']}\n"
             email_body += f"   📝 {article['summary']}\n\n"
         
-        email_body += """
+        # Add unsubscribe instructions
+        unsubscribe_text = ""
+        if subscriber_email:
+            unsubscribe_text = f"""
+To unsubscribe: Reply with "UNSUBSCRIBE" or send an email to {self.gmail_user} with subject "UNSUBSCRIBE {subscriber_email}"
+"""
+        else:
+            unsubscribe_text = "\nTo unsubscribe: Reply with \"UNSUBSCRIBE\""
+        
+        email_body += f"""
 ==================================================
 
 Thanks for reading AgentNews! Stay ahead of the AI agent revolution.
-
-Reply with UNSUBSCRIBE to stop receiving these emails.
-
+{unsubscribe_text}
 Best regards,
 The AgentNews Team
 """
@@ -222,6 +208,78 @@ The AgentNews Team
             logger.error(f"Error reading subscribers: {e}")
             return []
     
+    def remove_subscriber(self, email_to_remove: str, csv_file: str = 'subscribers.csv') -> bool:
+        """
+        Remove a subscriber from the CSV file
+        
+        Args:
+            email_to_remove: Email address to remove
+            csv_file: Path to CSV file with email addresses
+            
+        Returns:
+            True if successfully removed, False otherwise
+        """
+        try:
+            # Read all current subscribers
+            subscribers = self.read_subscribers(csv_file)
+            
+            # Check if email exists
+            if email_to_remove not in subscribers:
+                logger.warning(f"Email {email_to_remove} not found in subscribers list")
+                return False
+            
+            # Remove the email
+            subscribers.remove(email_to_remove)
+            
+            # Write back to file
+            with open(csv_file, 'w', newline='', encoding='utf-8') as file:
+                csv_writer = csv.writer(file)
+                for email in subscribers:
+                    csv_writer.writerow([email])
+            
+            logger.info(f"Successfully removed {email_to_remove} from subscribers")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error removing subscriber {email_to_remove}: {e}")
+            return False
+    
+    def add_subscriber(self, email_to_add: str, csv_file: str = 'subscribers.csv') -> bool:
+        """
+        Add a new subscriber to the CSV file
+        
+        Args:
+            email_to_add: Email address to add
+            csv_file: Path to CSV file with email addresses
+            
+        Returns:
+            True if successfully added, False otherwise
+        """
+        try:
+            # Basic email validation
+            if '@' not in email_to_add or '.' not in email_to_add:
+                logger.error(f"Invalid email format: {email_to_add}")
+                return False
+            
+            # Read current subscribers to check for duplicates
+            subscribers = self.read_subscribers(csv_file)
+            
+            if email_to_add in subscribers:
+                logger.warning(f"Email {email_to_add} already exists in subscribers list")
+                return False
+            
+            # Add the new email
+            with open(csv_file, 'a', newline='', encoding='utf-8') as file:
+                csv_writer = csv.writer(file)
+                csv_writer.writerow([email_to_add])
+            
+            logger.info(f"Successfully added {email_to_add} to subscribers")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error adding subscriber {email_to_add}: {e}")
+            return False
+    
     def send_newsletter(self, articles: List[Dict[str, str]], subscribers: List[str]) -> bool:
         """
         Send newsletter to all subscribers
@@ -245,20 +303,27 @@ The AgentNews Team
             # Create yagmail instance
             yag = yagmail.SMTP(self.gmail_user, self.gmail_password)
             
-            # Format newsletter
-            email_body = self.format_newsletter(articles)
             subject = "AgentNews Weekly"
-            
             logger.info(f"Sending newsletter to {len(subscribers)} subscribers")
             
-            # Send to all subscribers
-            yag.send(
-                to=subscribers,
-                subject=subject,
-                contents=email_body
-            )
+            # Send to each subscriber individually (for personalized unsubscribe links)
+            for subscriber in subscribers:
+                try:
+                    # Format newsletter with personalized unsubscribe link
+                    email_body = self.format_newsletter(articles, subscriber)
+                    
+                    yag.send(
+                        to=subscriber,
+                        subject=subject,
+                        contents=email_body
+                    )
+                    logger.info(f"Newsletter sent to {subscriber}")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to send newsletter to {subscriber}: {e}")
+                    continue
             
-            logger.info("Newsletter sent successfully!")
+            logger.info("Newsletter sending completed!")
             return True
             
         except Exception as e:
