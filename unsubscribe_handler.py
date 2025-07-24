@@ -12,7 +12,7 @@ import sys
 import logging
 import re
 import time
-from agent_news import NewsletterEmailer, load_env_file
+from agent_news_cloud import CloudNewsletterEmailer, DatabaseManager, load_env_file
 
 # Configure logging
 logging.basicConfig(
@@ -47,8 +47,9 @@ def manual_unsubscribe(email_address: str) -> bool:
             logger.error("Gmail credentials not found")
             return False
         
-        emailer = NewsletterEmailer(gmail_user, gmail_password)
-        success = emailer.remove_subscriber(email_address)
+        # Use database manager directly for unsubscription
+        db = DatabaseManager(os.getenv('DATABASE_URL'))
+        success, message = db.remove_subscriber(email_address)
         
         if success:
             logger.info(f"Successfully unsubscribed {email_address}")
@@ -83,14 +84,31 @@ def manual_subscribe(email_address: str) -> bool:
             logger.error("Gmail credentials not found")
             return False
         
-        emailer = NewsletterEmailer(gmail_user, gmail_password)
-        success = emailer.add_subscriber(email_address)
+        # Use database manager directly for subscription
+        db = DatabaseManager(os.getenv('DATABASE_URL'))
+        success, message, is_new_subscriber = db.add_subscriber(email_address)
         
         if success:
-            logger.info(f"Successfully subscribed {email_address}")
+            logger.info(f"Successfully subscribed {email_address} (new: {is_new_subscriber})")
+            
+            # Send welcome email to new subscribers
+            if is_new_subscriber:
+                try:
+                    emailer = CloudNewsletterEmailer(gmail_user, gmail_password, os.getenv('DATABASE_URL'))
+                    welcome_sent = emailer.send_welcome_email(email_address)
+                    
+                    if welcome_sent:
+                        logger.info(f"Welcome email sent to new subscriber: {email_address}")
+                    else:
+                        logger.warning(f"Failed to send welcome email to: {email_address}")
+                        
+                except Exception as e:
+                    logger.error(f"Error sending welcome email to {email_address}: {e}")
+                    # Don't fail the subscription if welcome email fails
+            
             return True
         else:
-            logger.error(f"Failed to subscribe {email_address}")
+            logger.error(f"Failed to subscribe {email_address}: {message}")
             return False
             
     except Exception as e:
@@ -116,13 +134,14 @@ def list_subscribers() -> bool:
             logger.error("Gmail credentials not found")
             return False
         
-        emailer = NewsletterEmailer(gmail_user, gmail_password)
-        subscribers = emailer.read_subscribers()
+        # Use database manager to list subscribers
+        db = DatabaseManager(os.getenv('DATABASE_URL'))
+        subscribers = db.get_active_subscribers()
         
         print(f"\nCurrent Subscribers ({len(subscribers)}):")
         print("=" * 40)
-        for i, email in enumerate(subscribers, 1):
-            print(f"{i:3d}. {email}")
+        for i, subscriber in enumerate(subscribers, 1):
+            print(f"{i:3d}. {subscriber['email']}")
         print()
         
         return True

@@ -106,7 +106,7 @@ class DatabaseManager:
         Add a new subscriber
         
         Returns:
-            (success: bool, message: str)
+            (success: bool, message: str, is_new_subscriber: bool)
         """
         import uuid
         unsubscribe_token = str(uuid.uuid4())[:32]
@@ -115,14 +115,24 @@ class DatabaseManager:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 
+                # First check if subscriber already exists
+                if self.is_postgres:
+                    cursor.execute("SELECT is_active FROM subscribers WHERE email = %s", (email,))
+                else:
+                    cursor.execute("SELECT is_active FROM subscribers WHERE email = ?", (email,))
+                
+                existing = cursor.fetchone()
+                is_new_subscriber = existing is None
+                
                 if self.is_postgres:
                     cursor.execute("""
                         INSERT INTO subscribers (email, unsubscribe_token, is_active)
                         VALUES (%s, %s, %s)
                         ON CONFLICT (email) DO UPDATE SET
                             is_active = %s,
-                            unsubscribed_at = NULL
-                    """, (email, unsubscribe_token, True, True))
+                            unsubscribed_at = NULL,
+                            unsubscribe_token = %s
+                    """, (email, unsubscribe_token, True, True, unsubscribe_token))
                 else:
                     cursor.execute("""
                         INSERT OR REPLACE INTO subscribers (email, unsubscribe_token, is_active, unsubscribed_at)
@@ -130,12 +140,12 @@ class DatabaseManager:
                     """, (email, unsubscribe_token))
                 
                 conn.commit()
-                logger.info(f"Successfully added subscriber: {email}")
-                return True, "Successfully subscribed!"
+                logger.info(f"Successfully added subscriber: {email} (new: {is_new_subscriber})")
+                return True, "Successfully subscribed!", is_new_subscriber
                 
         except Exception as e:
             logger.error(f"Error adding subscriber {email}: {e}")
-            return False, f"Error: {str(e)}"
+            return False, f"Error: {str(e)}", False
     
     def remove_subscriber(self, email: str) -> tuple:
         """
@@ -247,10 +257,10 @@ class CloudNewsletterEmailer:
         base_url = os.getenv('NEWSLETTER_BASE_URL', 'https://agentnews-production.up.railway.app')
         unsubscribe_url = f"{base_url}/unsubscribe?token={unsubscribe_token}"
         
-        email_body = f"""AgentNews Weekly - {current_date}
+        email_body = f"""AgentNews Daily - {current_date}
 {'=' * 50}
 
-Welcome to this week's AgentNews! Here are the top AI agent stories:
+Welcome to today's AgentNews! Here are the top AI agent stories:
 
 """
         
@@ -286,7 +296,7 @@ The AgentNews Team
         
         try:
             yag = yagmail.SMTP(self.gmail_user, self.gmail_password)
-            subject = "AgentNews Weekly"
+            subject = "AgentNews Daily"
             
             logger.info(f"Sending newsletter to {len(subscribers)} subscribers")
             
@@ -311,6 +321,96 @@ The AgentNews Team
         except Exception as e:
             logger.error(f"Error sending newsletter: {e}")
             return False
+    
+    def send_welcome_email(self, subscriber_email: str) -> bool:
+        """Send immediate welcome email with latest news to new subscriber"""
+        try:
+            # Get the subscriber data
+            subscribers = self.db.get_active_subscribers()
+            subscriber_data = None
+            for sub in subscribers:
+                if sub['email'] == subscriber_email:
+                    subscriber_data = sub
+                    break
+            
+            if not subscriber_data:
+                logger.error(f"Subscriber data not found for {subscriber_email}")
+                return False
+            
+            # Scrape fresh articles for welcome email
+            scraper = AgentNewsletterScraper()
+            articles = scraper.scrape_latest_news(max_articles=3)  # Send 3 articles for welcome
+            
+            if not articles:
+                logger.warning("No articles available for welcome email, sending welcome message only")
+                articles = [{
+                    'title': 'Welcome to AgentNews!',
+                    'link': 'https://aiagentsdirectory.com',
+                    'summary': 'Stay tuned for the latest AI agent news and updates.'
+                }]
+            
+            # Create welcome email content
+            email_body = self.format_welcome_email(articles, subscriber_data)
+            
+            yag = yagmail.SMTP(self.gmail_user, self.gmail_password)
+            subject = "Welcome to AgentNews! Here's what's happening in AI Agents"
+            
+            yag.send(
+                to=subscriber_email,
+                subject=subject,
+                contents=email_body
+            )
+            
+            logger.info(f"Welcome email sent to {subscriber_email}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error sending welcome email to {subscriber_email}: {e}")
+            return False
+    
+    def format_welcome_email(self, articles: List[Dict[str, str]], subscriber_data: Dict[str, str]) -> str:
+        """Format welcome email with latest news"""
+        current_date = datetime.now().strftime("%B %d, %Y")
+        email = subscriber_data['email']
+        unsubscribe_token = subscriber_data['unsubscribe_token']
+        
+        base_url = os.getenv('NEWSLETTER_BASE_URL', 'https://agentnews-production.up.railway.app')
+        unsubscribe_url = f"{base_url}/unsubscribe?token={unsubscribe_token}"
+        
+        email_body = f"""Welcome to AgentNews! - {current_date}
+{'=' * 50}
+
+Hello and welcome to AgentNews!
+
+Thank you for subscribing to our AI agent newsletter. You'll now receive daily updates about the latest developments in the AI agent space.
+
+Here are some of the latest stories to get you started:
+
+"""
+        
+        for i, article in enumerate(articles, 1):
+            email_body += f"{i}. {article['title']}\n"
+            email_body += f"   Link: {article['link']}\n"
+            email_body += f"   Summary: {article['summary']}\n\n"
+        
+        email_body += f"""
+==================================================
+
+What to expect:
+• Daily newsletter with the latest AI agent news
+• Curated articles from top sources
+• Updates on new tools, research, and industry trends
+
+Thanks for joining our community of AI agent enthusiasts!
+
+To unsubscribe: Click here: {unsubscribe_url}
+Or reply with "UNSUBSCRIBE" to {self.gmail_user}
+
+Best regards,
+The AgentNews Team
+"""
+        
+        return email_body
 
 
 class AgentNewsletterScraper:

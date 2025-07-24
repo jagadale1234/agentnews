@@ -9,11 +9,14 @@ A simple Python script that scrapes AI agent news and sends automated newsletter
 
 - **Web Scraping**: Automatically scrapes the latest AI agent news from aiagentsdirectory.com
 - **Email Automation**: Sends formatted newsletters via Gmail SMTP
-- **Subscriber Management**: Reads email addresses from a CSV file
-- **Unsubscribe System**: Automated unsubscribe handling with personalized links
-- **Web Interface**: Optional web-based subscription management
-- **Logging**: Comprehensive logging for monitoring and debugging
-- **Error Handling**: Robust error handling and fallback mechanisms
+- **Cloud Database**: PostgreSQL/SQLite support for reliable subscriber management
+- **Smart Unsubscribe**: Secure token-based unsubscribe system
+- **Web Interface**: Professional web-based subscription management
+- **Welcome Emails**: Automatic welcome emails with latest news for new subscribers
+- **GitHub Actions**: Automated daily newsletter delivery via cloud cron jobs
+- **Analytics**: Subscriber tracking and management
+- **Security**: Secure token generation and database management
+- **Scalable**: Ready for cloud deployment and high volume
 
 ## Requirements
 

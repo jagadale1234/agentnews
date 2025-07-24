@@ -15,7 +15,7 @@ except ImportError:
 
 import os
 import logging
-from agent_news_cloud import DatabaseManager
+from agent_news_cloud import DatabaseManager, CloudNewsletterEmailer
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -377,10 +377,32 @@ def subscribe():
         flash('Service temporarily unavailable. Please try again later.', 'error')
         return redirect(url_for('index'))
     
-    success, message = db.add_subscriber(email)
+    success, message, is_new_subscriber = db.add_subscriber(email)
     
     if success:
-        logger.info(f"Web subscription: {email}")
+        logger.info(f"Web subscription: {email} (new: {is_new_subscriber})")
+        
+        # Send welcome email to new subscribers
+        if is_new_subscriber:
+            try:
+                gmail_user = os.getenv('GMAIL_USER')
+                gmail_password = os.getenv('GMAIL_APP_PASSWORD')
+                
+                if gmail_user and gmail_password:
+                    emailer = CloudNewsletterEmailer(gmail_user, gmail_password, os.getenv('DATABASE_URL'))
+                    welcome_sent = emailer.send_welcome_email(email)
+                    
+                    if welcome_sent:
+                        logger.info(f"Welcome email sent to new subscriber: {email}")
+                    else:
+                        logger.warning(f"Failed to send welcome email to: {email}")
+                else:
+                    logger.warning("Gmail credentials not available for welcome email")
+                    
+            except Exception as e:
+                logger.error(f"Error sending welcome email to {email}: {e}")
+                # Don't fail the subscription if welcome email fails
+        
         return render_template_string(SUCCESS_TEMPLATE, action='subscribe')
     else:
         flash(message, 'error')

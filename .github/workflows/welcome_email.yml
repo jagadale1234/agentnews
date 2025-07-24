@@ -1,0 +1,65 @@
+name: Send Welcome Email
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: 'Email address to send welcome email to'
+        required: true
+        type: string
+
+jobs:
+  send-welcome:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Send Welcome Email
+      env:
+        GMAIL_USER: ${{ secrets.GMAIL_USER }}
+        GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        NEWSLETTER_BASE_URL: ${{ secrets.NEWSLETTER_BASE_URL }}
+      run: |
+        python -c "
+        import os
+        from agent_news_cloud import CloudNewsletterEmailer, load_env_file
+        
+        load_env_file()
+        gmail_user = os.getenv('GMAIL_USER')
+        gmail_password = os.getenv('GMAIL_APP_PASSWORD')
+        database_url = os.getenv('DATABASE_URL')
+        
+        if gmail_user and gmail_password:
+            emailer = CloudNewsletterEmailer(gmail_user, gmail_password, database_url)
+            success = emailer.send_welcome_email('${{ github.event.inputs.email }}')
+            if success:
+                print('Welcome email sent successfully!')
+            else:
+                print('Failed to send welcome email')
+                exit(1)
+        else:
+            print('Gmail credentials not found')
+            exit(1)
+        "
+    
+    - name: Upload logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: welcome-email-logs
+        path: |
+          agent_news.log
+        retention-days: 7
