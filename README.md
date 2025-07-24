@@ -1,8 +1,11 @@
 # AgentNews - Automated AI Newsletter
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
+
 A simple Python script that scrapes AI agent news and sends automated newsletters to subscribers.
 
-## Features
+## 🚀 Features
 
 - 🔍 **Web Scraping**: Automatically scrapes the latest AI agent news from aiagentsdirectory.com
 - 📧 **Email Automation**: Sends formatted newsletters via Gmail SMTP
@@ -10,58 +13,40 @@ A simple Python script that scrapes AI agent news and sends automated newsletter
 - 📊 **Logging**: Comprehensive logging for monitoring and debugging
 - 🛡️ **Error Handling**: Robust error handling and fallback mechanisms
 
-## Requirements
+## 📋 Requirements
 
 - Python 3.7+
 - Gmail account with App Password enabled
 - Internet connection for web scraping
 
-## Setup
+## 🔧 Quick Start
 
-1. **Install dependencies:**
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/agentnews.git
+   cd agentnews
+   ```
+
+2. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
 
-2. **Set up Gmail App Password:**
-   - Go to your Google Account settings
-   - Enable 2-factor authentication
-   - Generate an App Password for "Mail"
-   - Save this password (you'll need it for the environment variables)
-
-3. **Set environment variables:**
+3. **Set up Gmail credentials:**
    ```bash
-   export GMAIL_USER="your-email@gmail.com"
-   export GMAIL_APP_PASSWORD="your-app-password"
-   ```
-   
-   Or create a `.env` file:
-   ```
-   GMAIL_USER=your-email@gmail.com
-   GMAIL_APP_PASSWORD=your-app-password
+   python setup.py
    ```
 
 4. **Add subscribers:**
-   Edit `subscribers.csv` and add email addresses, one per line:
-   ```
-   subscriber1@example.com
-   subscriber2@example.com
-   user@company.org
+   ```bash
+   cp subscribers.example.csv subscribers.csv
+   # Edit subscribers.csv with real email addresses
    ```
 
-## Usage
-
-Run the newsletter automation:
-
-```bash
-python agent_news.py
-```
-
-The script will:
-1. Scrape the latest AI agent news from aiagentsdirectory.com
-2. Format a newsletter with the top 5 articles
-3. Send the newsletter to all subscribers in `subscribers.csv`
-4. Log all activities to `agent_news.log`
+5. **Send your first newsletter:**
+   ```bash
+   python agent_news.py
+   ```
 
 ## Email Format
 
