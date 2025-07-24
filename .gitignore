@@ -49,6 +49,9 @@ Thumbs.db
 # Subscriber data (you may want to keep this private)
 subscribers.csv
 
+# Deployment files with credentials
+RAILWAY_DEPLOY.md
+
 # Temporary files
 *.tmp
 *.bak
