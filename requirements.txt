@@ -8,4 +8,4 @@ flask>=2.3.0
 
 # Cloud database support
 psycopg2-binary>=2.9.0  # PostgreSQL for cloud deployment
-sqlite3  # SQLite for local development (built-in)
+
