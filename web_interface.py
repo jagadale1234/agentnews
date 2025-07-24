@@ -536,6 +536,6 @@ if __name__ == '__main__':
     if os.getenv('DATABASE_URL'):
         app.run(host='0.0.0.0', port=port, debug=False)
     else:
-        print("Visit http://localhost:5000 to manage subscriptions")
+        print("Visit https://agentnews-production.up.railway.app to manage subscriptions")
         print("Press Ctrl+C to stop")
         app.run(debug=True, host='0.0.0.0', port=port)

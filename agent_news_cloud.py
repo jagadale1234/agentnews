@@ -244,7 +244,7 @@ class CloudNewsletterEmailer:
         unsubscribe_token = subscriber_data['unsubscribe_token']
         
         # Create unsubscribe URL (you'll need to replace with your actual domain)
-        base_url = os.getenv('NEWSLETTER_BASE_URL', 'http://localhost:5000')
+        base_url = os.getenv('NEWSLETTER_BASE_URL', 'https://agentnews-production.up.railway.app')
         unsubscribe_url = f"{base_url}/unsubscribe?token={unsubscribe_token}"
         
         email_body = f"""AgentNews Weekly - {current_date}

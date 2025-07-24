@@ -93,7 +93,7 @@ pip install flask
 python web_interface.py
 ```
 
-Then visit `http://localhost:5000` to manage subscriptions through a web browser.
+Then visit your deployed web interface to manage subscriptions through a web browser.
 
 ## File Structure
 
