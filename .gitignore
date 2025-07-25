@@ -52,6 +52,18 @@ subscribers.csv
 # Deployment files with credentials
 RAILWAY_DEPLOY.md
 
+# Test files
+test_*.py
+*_test.py
+tests/
+test/
+
+# Shell scripts
+*.sh
+
+# Text files
+*.txt
+
 # Temporary files
 *.tmp
 *.bak

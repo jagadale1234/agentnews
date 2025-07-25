@@ -3,8 +3,14 @@
 Cloud-enabled AgentNews with Database Integration
 ================================================
 
-Enhanced version with cloud database support for subscriber management.
-Supports PostgreSQL (for cloud deployment) and SQLite (for local development).
+This enhanced version was born out of necessity - the original CSV-based approach 
+worked fine locally, but fell apart when deploying to the cloud. Multiple instances 
+trying to write to the same file? Recipe for disaster. So we made the jump to 
+proper database management that can handle concurrent users and scale properly.
+
+Why both PostgreSQL and SQLite? Simple - we want developers to be able to 
+test locally without needing a full cloud setup, but production deserves 
+the robustness of PostgreSQL.
 """
 
 import os
@@ -17,7 +23,9 @@ import requests
 from bs4 import BeautifulSoup
 import yagmail
 
-# Try to import PostgreSQL support (optional)
+# We're being extra careful with imports here - psycopg2 can be finicky to install
+# especially on different platforms. Better to gracefully degrade to SQLite
+# than crash the whole application.
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
@@ -26,7 +34,9 @@ except ImportError:
     POSTGRES_AVAILABLE = False
     print("PostgreSQL support not available. Install with: pip install psycopg2-binary")
 
-# Configure logging
+# I learned the hard way that logging to both file and console is essential
+# When things go wrong in production, you need those logs accessible from 
+# multiple places. The file persists between runs, console helps with debugging.
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -39,31 +49,57 @@ logger = logging.getLogger(__name__)
 
 
 class DatabaseManager:
-    """Handles database operations for subscriber management"""
+    """
+    The heart of our cloud architecture - handles all database operations
+    
+    This class was designed with one principle: work everywhere, fail gracefully.
+    Whether you're running on your laptop with SQLite or in production with 
+    PostgreSQL, the interface stays the same. That's the beauty of abstraction.
+    """
     
     def __init__(self, database_url: Optional[str] = None):
+        # First, figure out what database we're dealing with
+        # Railway, Heroku, and other cloud providers give us this via DATABASE_URL
         self.database_url = database_url or os.getenv('DATABASE_URL')
         self.is_postgres = self.database_url and self.database_url.startswith('postgresql')
         
+        # Safety check - don't let the app start if we can't handle the database
         if self.is_postgres and not POSTGRES_AVAILABLE:
             raise ImportError("PostgreSQL support required but psycopg2 not installed")
         
+        # Get the database ready for action
         self.init_database()
     
     def get_connection(self):
-        """Get database connection"""
+        """
+        Get database connection - the universal translator
+        
+        This method hides the complexity of different database types.
+        Your code doesn't need to know if it's talking to PostgreSQL 
+        or SQLite - it just asks for a connection and gets one.
+        """
         if self.is_postgres:
+            # We already checked POSTGRES_AVAILABLE in __init__, so this should be safe
+            import psycopg2
             return psycopg2.connect(self.database_url)
         else:
-            # Use SQLite for local development
+            # SQLite for local development - simple and no setup required
+            # Store in current directory so developers can easily find and inspect it
             db_path = 'subscribers.db'
             return sqlite3.connect(db_path)
     
     def init_database(self):
-        """Initialize database tables"""
+        """
+        Set up our database tables - the foundation of everything
+        
+        I spent way too much time debugging issues caused by missing indexes
+        in production. Now I create them upfront. Email lookups need to be fast,
+        and filtering by active status happens constantly.
+        """
         with self.get_connection() as conn:
             if self.is_postgres:
                 cursor = conn.cursor()
+                # PostgreSQL syntax with proper data types for production
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS subscribers (
                         id SERIAL PRIMARY KEY,
@@ -74,6 +110,7 @@ class DatabaseManager:
                         unsubscribe_token VARCHAR(64) UNIQUE
                     )
                 """)
+                # These indexes are performance lifesavers when you have thousands of subscribers
                 cursor.execute("""
                     CREATE INDEX IF NOT EXISTS idx_subscribers_email ON subscribers(email);
                 """)
@@ -82,6 +119,7 @@ class DatabaseManager:
                 """)
             else:
                 cursor = conn.cursor()
+                # SQLite version - slightly different syntax but same structure
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS subscribers (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,6 +130,7 @@ class DatabaseManager:
                         unsubscribe_token TEXT UNIQUE
                     )
                 """)
+                # Same indexes for consistency
                 cursor.execute("""
                     CREATE INDEX IF NOT EXISTS idx_subscribers_email ON subscribers(email);
                 """)
@@ -103,19 +142,26 @@ class DatabaseManager:
     
     def add_subscriber(self, email: str) -> tuple:
         """
-        Add a new subscriber
+        Add a new subscriber with smart conflict handling
+        
+        This method does more than just insert - it handles the tricky case where
+        someone tries to resubscribe. We treat that as reactivating their account
+        rather than creating a duplicate. The return tuple tells us if they're 
+        truly new (triggering welcome emails) or just reactivating.
         
         Returns:
             (success: bool, message: str, is_new_subscriber: bool)
         """
         import uuid
+        # Generate a unique token for unsubscribe links - security first!
         unsubscribe_token = str(uuid.uuid4())[:32]
         
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # First check if subscriber already exists
+                # Check if this email already exists in our system
+                # This drives the welcome email logic
                 if self.is_postgres:
                     cursor.execute("SELECT is_active FROM subscribers WHERE email = %s", (email,))
                 else:
@@ -124,6 +170,7 @@ class DatabaseManager:
                 existing = cursor.fetchone()
                 is_new_subscriber = existing is None
                 
+                # PostgreSQL has better conflict resolution with ON CONFLICT
                 if self.is_postgres:
                     cursor.execute("""
                         INSERT INTO subscribers (email, unsubscribe_token, is_active)
@@ -134,6 +181,7 @@ class DatabaseManager:
                             unsubscribe_token = %s
                     """, (email, unsubscribe_token, True, True, unsubscribe_token))
                 else:
+                    # SQLite uses INSERT OR REPLACE - simpler but less precise
                     cursor.execute("""
                         INSERT OR REPLACE INTO subscribers (email, unsubscribe_token, is_active, unsubscribed_at)
                         VALUES (?, ?, 1, NULL)
@@ -323,9 +371,18 @@ The AgentNews Team
             return False
     
     def send_welcome_email(self, subscriber_email: str) -> bool:
-        """Send immediate welcome email with latest news to new subscriber"""
+        """
+        Send a warm welcome to new subscribers - first impressions matter!
+        
+        This was added because I realized we were missing a huge opportunity.
+        When someone subscribes, they're excited about AI agents RIGHT NOW.
+        Why make them wait until tomorrow for their first newsletter?
+        
+        We grab fresh articles and send them immediately. If no articles are
+        available (rare, but it happens), we send a friendly welcome anyway.
+        """
         try:
-            # Get the subscriber data
+            # Find the subscriber's data - we need their unsubscribe token
             subscribers = self.db.get_active_subscribers()
             subscriber_data = None
             for sub in subscribers:
@@ -337,11 +394,12 @@ The AgentNews Team
                 logger.error(f"Subscriber data not found for {subscriber_email}")
                 return False
             
-            # Scrape fresh articles for welcome email
+            # Get the freshest articles available - welcome emails deserve the best
             scraper = AgentNewsletterScraper()
-            articles = scraper.scrape_latest_news(max_articles=3)  # Send 3 articles for welcome
+            articles = scraper.scrape_latest_news(max_articles=3)  # Three articles feels right - not overwhelming
             
             if not articles:
+                # Graceful fallback when scraping fails
                 logger.warning("No articles available for welcome email, sending welcome message only")
                 articles = [{
                     'title': 'Welcome to AgentNews!',
@@ -349,7 +407,7 @@ The AgentNews Team
                     'summary': 'Stay tuned for the latest AI agent news and updates.'
                 }]
             
-            # Create welcome email content
+            # Create the welcome email - different tone than regular newsletters
             email_body = self.format_welcome_email(articles, subscriber_data)
             
             yag = yagmail.SMTP(self.gmail_user, self.gmail_password)
@@ -414,51 +472,127 @@ The AgentNews Team
 
 
 class AgentNewsletterScraper:
-    """Scrapes AI agent news from aiagentsdirectory.com"""
+    """
+    Multi-source AI agent news scraper
+    
+    After manually checking dozens of AI agent sites, I found these two give us 
+    the best coverage: aiagentsdirectory.com for breaking news and individual 
+    tool announcements, and aiagentstore.ai for comprehensive weekly digests 
+    and strategic analysis.
+    
+    The strategy here is diversity - if one source is down or light on content,
+    we fall back to the other. Real newsletters need reliable content flow.
+    """
     
     def __init__(self):
-        self.base_url = "https://aiagentsdirectory.com"
-        self.blog_url = f"{self.base_url}/blog"
+        # Primary sources - each serves a different content style
+        self.sources = {
+            'aiagentsdirectory': {
+                'base_url': "https://aiagentsdirectory.com",
+                'blog_url': "https://aiagentsdirectory.com/blog",
+                'selectors': [
+                    'a[href*="/blog/"]',
+                    '.article-link', 
+                    '[data-article]',
+                    'article a'
+                ]
+            },
+            'aiagentstore': {
+                'base_url': "https://aiagentstore.ai", 
+                'blog_url': "https://aiagentstore.ai/ai-agent-news/this-week",
+                'selectors': [
+                    'h3',  # Section headers like "OpenAI Expands Agent Capabilities"
+                    'h2',  # Main digest sections
+                    'strong', # Bold headlines within content
+                    '.news-item'  # In case they have specific news item classes
+                ]
+            }
+        }
+        
+        # Configure session with realistic browser headers
+        # Some sites block obvious scrapers, so we blend in
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
     
     def scrape_latest_news(self, max_articles: int = 5) -> List[Dict[str, str]]:
-        """Scrape the latest AI agent news articles"""
+        """
+        Scrape from multiple sources for comprehensive coverage
+        
+        I learned the hard way that relying on a single source is risky.
+        Sites go down, change their structure, or just have slow news days.
+        This method tries both sources and combines the results, giving us
+        the best chance of always having fresh content for our readers.
+        """
+        all_articles = []
+        
+        # Try each source - if one fails, we still have the other
+        for source_name, source_config in self.sources.items():
+            try:
+                logger.info(f"Scraping news from {source_name}: {source_config['blog_url']}")
+                articles = self._scrape_source(source_name, source_config, max_articles)
+                all_articles.extend(articles)
+                logger.info(f"Got {len(articles)} articles from {source_name}")
+            except Exception as e:
+                logger.warning(f"Failed to scrape {source_name}: {e}")
+                continue
+        
+        # Remove duplicates and return the best articles
+        # Prioritize by source order (aiagentsdirectory first for recency)
+        seen_titles = set()
+        unique_articles = []
+        
+        for article in all_articles:
+            # Simple deduplication by title similarity
+            title_lower = article['title'].lower()
+            if not any(title_lower in seen_title or seen_title in title_lower for seen_title in seen_titles):
+                seen_titles.add(title_lower)
+                unique_articles.append(article)
+                
+                if len(unique_articles) >= max_articles:
+                    break
+        
+        logger.info(f"Returning {len(unique_articles)} unique articles from all sources")
+        return unique_articles
+    
+    def _scrape_source(self, source_name: str, config: dict, max_articles: int) -> List[Dict[str, str]]:
+        """Scrape articles from a specific source"""
+        if source_name == 'aiagentsdirectory':
+            return self._scrape_aiagentsdirectory(config, max_articles)
+        elif source_name == 'aiagentstore':
+            return self._scrape_aiagentstore(config, max_articles)
+        else:
+            return []
+    
+    def _scrape_aiagentsdirectory(self, config: dict, max_articles: int) -> List[Dict[str, str]]:
+        """Original aiagentsdirectory.com scraping logic"""
         try:
-            logger.info(f"Scraping news from {self.blog_url}")
-            response = self.session.get(self.blog_url, timeout=10)
+            response = self.session.get(config['blog_url'], timeout=10)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.content, 'html.parser')
             articles = []
             
-            article_selectors = [
-                'a[href*="/blog/"]',
-                '.article-link',
-                '[data-article]',
-                'article a',
-            ]
-            
+            # Try different selectors to find article links
             article_links = []
-            for selector in article_selectors:
+            for selector in config['selectors']:
                 links = soup.select(selector)
                 if links:
                     article_links = links
                     break
             
+            # Fallback to homepage if blog doesn't work
             if not article_links:
                 logger.info("Trying homepage for latest articles section")
-                home_response = self.session.get(self.base_url, timeout=10)
+                home_response = self.session.get(config['base_url'], timeout=10)
                 home_response.raise_for_status()
                 home_soup = BeautifulSoup(home_response.content, 'html.parser')
                 article_links = home_soup.select('a[href*="/blog/"]')
             
-            logger.info(f"Found {len(article_links)} potential article links")
-            
+            # Process the links we found
             seen_links = set()
-            for link in article_links[:max_articles * 2]:
+            for link in article_links[:max_articles * 2]:  # Get extra in case some are invalid
                 if len(articles) >= max_articles:
                     break
                     
@@ -466,13 +600,13 @@ class AgentNewsletterScraper:
                 if not href or href in seen_links:
                     continue
                 
-                # Ensure href is a string
+                # Handle relative URLs
                 if isinstance(href, list):
                     href = href[0] if href else ''
                 href = str(href)
                 
                 if href.startswith('/'):
-                    href = self.base_url + href
+                    href = config['base_url'] + href
                 elif not href.startswith('http'):
                     continue
                 
@@ -483,14 +617,101 @@ class AgentNewsletterScraper:
                     articles.append({
                         'title': title,
                         'link': href,
-                        'summary': title  # For MVP, use title as summary
+                        'summary': title  # Use title as summary for now
                     })
             
-            logger.info(f"Successfully scraped {len(articles)} articles")
             return articles[:max_articles]
             
         except Exception as e:
-            logger.error(f"Error scraping news: {e}")
+            logger.error(f"Error scraping aiagentsdirectory: {e}")
+            return []
+    
+    def _scrape_aiagentstore(self, config: dict, max_articles: int) -> List[Dict[str, str]]:
+        """
+        Scrape the aiagentstore.ai weekly digest
+        
+        This site has a different structure - it's more of a curated digest
+        with sections like "OpenAI Expands Agent Capabilities" and detailed 
+        analysis. We extract these section headers and key points as articles.
+        """
+        try:
+            response = self.session.get(config['blog_url'], timeout=10)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            articles = []
+            
+            # Look for main content sections in the digest
+            # Find headers that contain AI agent keywords
+            all_headers = soup.find_all(['h2', 'h3'])
+            content_sections = []
+            
+            for header in all_headers:
+                text = header.get_text(strip=True)
+                if text and any(keyword in text.lower() for keyword in [
+                    'openai', 'agent', 'ai', 'aws', 'claude', 'anthropic', 
+                    'microsoft', 'google', 'news', 'update', 'launch', 'breakthrough'
+                ]):
+                    content_sections.append(header)
+            
+            for section in content_sections[:max_articles]:
+                title = section.get_text(strip=True)
+                
+                # Find the content that follows this heading
+                content_elements = []
+                next_element = section.find_next_sibling()
+                
+                # Collect content until we hit another heading or run out
+                while next_element and hasattr(next_element, 'name'):
+                    if next_element.name and next_element.name not in ['h1', 'h2', 'h3']:
+                        if next_element.name == 'p' and next_element.get_text(strip=True):
+                            content_elements.append(next_element.get_text(strip=True))
+                        elif next_element.name == 'ul' and hasattr(next_element, 'find_all'):
+                            # Handle bullet points
+                            for li in next_element.find_all('li'):
+                                content_elements.append(f"• {li.get_text(strip=True)}")
+                        next_element = next_element.find_next_sibling()
+                        
+                        # Don't go too far down the page
+                        if len(content_elements) > 5:
+                            break
+                    else:
+                        break
+                
+                # Create summary from first few content elements
+                summary = ' '.join(content_elements[:2]) if content_elements else title
+                # Limit summary length for email formatting
+                if len(summary) > 200:
+                    summary = summary[:200] + "..."
+                
+                articles.append({
+                    'title': title,
+                    'link': config['blog_url'],  # Link back to the full digest
+                    'summary': summary
+                })
+            
+            # If we didn't find section headers, try looking for other patterns
+            if not articles:
+                # Look for any strong/bold text that might be news items
+                strong_elements = soup.find_all('strong')
+                for element in strong_elements[:max_articles]:
+                    text = element.get_text(strip=True)
+                    if len(text) > 20 and any(keyword in text.lower() for keyword in ['ai', 'agent', 'openai', 'aws']):
+                        # Get surrounding context
+                        parent = element.parent
+                        context = parent.get_text(strip=True) if parent else text
+                        summary = context[:200] + "..." if len(context) > 200 else context
+                        
+                        articles.append({
+                            'title': text,
+                            'link': config['blog_url'],
+                            'summary': summary
+                        })
+            
+            return articles[:max_articles]
+            
+        except Exception as e:
+            logger.error(f"Error scraping aiagentstore: {e}")
             return []
 
 

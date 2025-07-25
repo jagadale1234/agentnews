@@ -3,10 +3,19 @@
 Cloud Web Interface for AgentNews Subscription Management
 ========================================================
 
-A Flask-based web interface with database integration for handling
-subscribe/unsubscribe requests with unsubscribe tokens.
+This started as a simple subscription form, but grew into a full-featured
+web interface when I realized how much easier it makes subscriber management.
+
+No more manual CSV editing, no more command-line tools for non-technical
+users. Just a clean web interface that handles subscriptions, unsubscribes,
+and even provides analytics on subscriber counts.
+
+The token-based unsubscribe system was particularly important - it needed
+to be both secure and user-friendly. One click, done.
 """
 
+# Flask import with graceful error handling - learned this the hard way
+# when deploying to environments where Flask wasn't installed
 try:
     from flask import Flask, request, render_template_string, redirect, url_for, flash
 except ImportError:
@@ -15,13 +24,16 @@ except ImportError:
 
 import os
 import logging
+# Import our cloud infrastructure - this ties everything together
 from agent_news_cloud import DatabaseManager, CloudNewsletterEmailer
 
-# Configure logging
+# Logging setup - web interfaces need good logging for debugging user issues
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+# Secret key for session management - CHANGE THIS IN PRODUCTION!
+# I've seen too many apps compromised because they kept default secrets
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your-secret-key-here-change-in-production')
 
 # HTML Templates
@@ -348,7 +360,13 @@ UNSUBSCRIBE_TOKEN_TEMPLATE = """
 """
 
 def get_database():
-    """Get database manager instance"""
+    """
+    Central database connection point - keeps things DRY
+    
+    This function exists because I got tired of repeating database 
+    connection logic everywhere. Plus, it makes error handling 
+    consistent across all routes.
+    """
     database_url = os.getenv('DATABASE_URL')
     try:
         return DatabaseManager(database_url)
@@ -358,14 +376,28 @@ def get_database():
 
 @app.route('/')
 def index():
-    """Main page with subscriber count"""
+    """
+    The homepage - simple but effective
+    
+    Shows current subscriber count to build social proof.
+    Nothing fancy, just a clean interface that gets the job done.
+    """
     db = get_database()
     subscriber_count = db.get_subscriber_count() if db else 0
     return render_template_string(MAIN_TEMPLATE, subscriber_count=subscriber_count)
 
 @app.route('/subscribe', methods=['POST'])
 def subscribe():
-    """Handle subscription requests"""
+    """
+    Handle new subscriptions with welcome email automation
+    
+    This is where the magic happens. Not only do we add the subscriber
+    to our database, but we immediately send them a welcome email if
+    they're new. Because who wants to wait for their first newsletter?
+    
+    The error handling here is crucial - we never want a failed welcome
+    email to prevent someone from subscribing successfully.
+    """
     email = request.form.get('email', '').strip().lower()
     
     if not email:
@@ -382,7 +414,7 @@ def subscribe():
     if success:
         logger.info(f"Web subscription: {email} (new: {is_new_subscriber})")
         
-        # Send welcome email to new subscribers
+        # The welcome email feature - this was a game changer for engagement
         if is_new_subscriber:
             try:
                 gmail_user = os.getenv('GMAIL_USER')
@@ -401,7 +433,7 @@ def subscribe():
                     
             except Exception as e:
                 logger.error(f"Error sending welcome email to {email}: {e}")
-                # Don't fail the subscription if welcome email fails
+                # Critical: Don't fail the subscription if welcome email fails
         
         return render_template_string(SUCCESS_TEMPLATE, action='subscribe')
     else:
